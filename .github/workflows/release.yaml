@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      VERSION_BUMP:
+        description: 'The version bump'
+        type: choice
+        options:
+        - major
+        - minor
+        - patch
+        default: minor
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-${{ github.repository }}-${{ github.ref_name }}
+      cancel-in-progress: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js version
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        registry-url: https://registry.npmjs.org/
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Configure git
+      run: |
+        git config user.name "uphold-bot"
+        git config user.email "bot@uphold.com"
+
+    - name: Bump version
+      env:
+        VERSION_BUMP: ${{ github.event.inputs.VERSION_BUMP }}
+      run: npm version "$VERSION_BUMP" --no-git-tag-version
+
+    - name: Get new version
+      id: version
+      run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+    - name: Create pull request
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        git checkout -b release/${{ steps.version.outputs.version }}
+        npx @uphold/github-changelog-generator --future-release "${{ steps.version.outputs.version }}" > CHANGELOG.md
+        git add -A
+        git commit -m "Release ${{ steps.version.outputs.version }}"
+        git push origin release/${{ steps.version.outputs.version }}
+        gh pr create \
+          --title "Release ${{ steps.version.outputs.version }}" \
+          --body "Bumps version to ${{ steps.version.outputs.version }}." \
+          --label release
