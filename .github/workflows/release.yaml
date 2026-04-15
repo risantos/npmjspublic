@@ -63,4 +63,3 @@ jobs:
         gh pr create \
           --title "Release ${{ steps.version.outputs.version }}" \
           --body "Bumps version to ${{ steps.version.outputs.version }}." \
-          --label release
